@@ -2,7 +2,7 @@
 using UnityEditor;
 using System;
 using System.Text.RegularExpressions;
-
+ 
 public class SP_StartupWindowProcessor : AssetPostprocessor
 {
 	static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
@@ -32,7 +32,7 @@ public class SP_StartupWindow : EditorWindow
 	Texture2D iconColorful;
 	Texture2D iconChromatica;
 	Texture2D iconSSAOPro;
-
+	 
 	[MenuItem("Help/About SSAO Pro", false, 0)]
 	public static void MenuInit()
 	{

@@ -1,3 +1,20 @@
+1.2.3
+- Fixed : Unity 5 beta compatibility. Simply extract the "Unity5_compatibility" package.
+
+1.2.2
+- Fixed : Transparent objects aren't affected by the ambient occlusion anymore.
+
+1.2.1
+- Fixed : No more HideFlags errors on build.
+
+1.2
+- Added : A new, more predictable SSAO variant. This one doesn't depend on the clipping planes and fixes a few self-shadowing bugs. The old SSAO is still available (use the "SSAO Mode" dropdown).
+- Modified : The old SSAO mode "1.1 (Legacy)" now uses a higher precision depth map and works better with the forward rendering path.
+- Modified : Distance cutoff is now always enabled, bringing the "shader keywords" requirement down to 10.
+- Modified : The default noise texture is now automatically applied on creation.
+- Misc : Documentation update.
+- Note : Due to some heavy refactoring, upgrading from previous version of SSAO Pro may fail. It's best to remove SSAO Pro from your project entirely and reimport the last version.
+
 1.1
 - Added : Downsampling. You can choose to downsample the AO pass only or AO + Blur, so you can better control the speed-quality ratio depending on your scene.
 - Removed : Useless "Bilateral Threshold" parameter. This is now hardcoded into the shader.

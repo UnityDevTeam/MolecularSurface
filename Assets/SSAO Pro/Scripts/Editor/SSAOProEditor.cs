@@ -4,6 +4,9 @@ using UnityEditor;
 [CustomEditor(typeof(SSAOPro))]
 public class SSAOProEditor : Editor
 {
+	static GUIContent[] c_aoModes = { new GUIContent("1.1 (Legacy)"), new GUIContent("1.2") };
+
+	SerializedProperty p_aoMode;
 	SerializedProperty p_noiseTexture;
 	SerializedProperty p_samples;
 	SerializedProperty p_downsampling;
@@ -13,7 +16,6 @@ public class SSAOProEditor : Editor
 	SerializedProperty p_bias;
 	SerializedProperty p_lumContribution;
 	SerializedProperty p_occlusionColor;
-	SerializedProperty p_cutoffEnabled;
 	SerializedProperty p_cutoffDistance;
 	SerializedProperty p_cutoffFalloff;
 	SerializedProperty p_blur;
@@ -22,6 +24,7 @@ public class SSAOProEditor : Editor
 
 	void OnEnable()
 	{
+		p_aoMode = serializedObject.FindProperty("Mode");
 		p_noiseTexture = serializedObject.FindProperty("NoiseTexture");
 		p_samples = serializedObject.FindProperty("Samples");
 		p_downsampling = serializedObject.FindProperty("Downsampling");
@@ -31,7 +34,6 @@ public class SSAOProEditor : Editor
 		p_bias = serializedObject.FindProperty("Bias");
 		p_lumContribution = serializedObject.FindProperty("LumContribution");
 		p_occlusionColor = serializedObject.FindProperty("OcclusionColor");
-		p_cutoffEnabled = serializedObject.FindProperty("CutoffEnabled");
 		p_cutoffDistance = serializedObject.FindProperty("CutoffDistance");
 		p_cutoffFalloff = serializedObject.FindProperty("CutoffFalloff");
 		p_blur = serializedObject.FindProperty("Blur");
@@ -43,14 +45,15 @@ public class SSAOProEditor : Editor
 	{
 		serializedObject.Update();
 
-		// Near/far view plane check
-		Camera camera = ((SSAOPro)target).GetComponent<Camera>();
+		p_aoMode.enumValueIndex = EditorGUILayout.Popup(new GUIContent("SSAO Mode", "SSAO Algorithm"), p_aoMode.enumValueIndex, c_aoModes);
 
-		if (camera.nearClipPlane < 0.3 || (camera.farClipPlane - camera.nearClipPlane) > 1600)
+		// Near/far view plane check if Mode == AOMode.V1
+		if (p_aoMode.enumValueIndex == 0)
 		{
-			EditorGUILayout.HelpBox("Check your view planes ! You may experience artifacts and heavy self-shadowing with your current camera settings. Make sure you read the \"Random Notes\" section in the doc.", MessageType.Warning);
-			if (GUILayout.Button("View Documentation"))
-				Application.OpenURL("file://" + Application.dataPath + "/SSAO Pro/Documentation/index.html");
+			Camera camera = ((SSAOPro)target).GetComponent<Camera>();
+
+			if (camera.nearClipPlane < 0.3 || (camera.farClipPlane - camera.nearClipPlane) > 5000)
+				EditorGUILayout.HelpBox("Check your view planes ! You may experience artifacts and heavy self-shadowing with your current camera settings. Make sure you read the \"Random Notes\" section in the doc.", MessageType.Warning);
 		}
 
 		Texture2D noise = (Texture2D)p_noiseTexture.objectReferenceValue;
@@ -83,17 +86,16 @@ public class SSAOProEditor : Editor
 			EditorGUI.indentLevel--;
 		}
 
-		EditorGUILayout.PropertyField(p_cutoffEnabled, new GUIContent("Distance Cutoff", "Limits the ambient occlusion distance on screen"));
-
-		if (p_cutoffEnabled.boolValue)
-		{
-			EditorGUI.indentLevel++;
-			EditorGUILayout.PropertyField(p_cutoffDistance, new GUIContent("Max Distance", "Stops applying ambient occlusion for samples over this depth (in world unit)"));
-			EditorGUILayout.PropertyField(p_cutoffFalloff, new GUIContent("Falloff", "Starts fading the ambient occlusion X units before the Max Distance has been reached (in world unit)"));
-			EditorGUI.indentLevel--;
-		}
+		EditorGUILayout.LabelField("Distance Cutoff", EditorStyles.boldLabel);
+		EditorGUI.indentLevel++;
+		EditorGUILayout.PropertyField(p_cutoffDistance, new GUIContent("Max Distance", "Stops applying ambient occlusion for samples over this depth (in world unit)"));
+		EditorGUILayout.PropertyField(p_cutoffFalloff, new GUIContent("Falloff", "Starts fading the ambient occlusion X units before the Max Distance has been reached (in world unit)"));
+		EditorGUI.indentLevel--;
 
 		p_debugAO.boolValue = GUILayout.Toggle(p_debugAO.boolValue, "Show AO", EditorStyles.miniButton);
+
+		if (GUILayout.Button("About", EditorStyles.miniButton))
+			SP_StartupWindow.Init(true);
 
 		serializedObject.ApplyModifiedProperties();
 	}

@@ -1,4 +1,4 @@
-﻿Shader "Hidden/SSAO Pro"
+﻿Shader "Hidden/SSAO Pro V2"
 {
 	Properties
 	{
@@ -10,15 +10,13 @@
 		#include "UnityCG.cginc"
 
 		sampler2D _MainTex;
-
-		// We need both textures for normal & depth because the depth encoded in
-		// _CameraDepthNormalsTexture is low precision which results in a lot of
-		// depth artifacts.
 		sampler2D_float _CameraDepthTexture;
 		sampler2D_float _CameraDepthNormalsTexture;
-				
+		
+		float4x4 _InverseViewProject;
+		float4x4 _CameraModelView;
+
 		sampler2D _NoiseTex;
-		float4x4 _InverseProj;
 		float4 _Params1; // Noise Size / Sample Radius / Intensity / Distance
 		float4 _Params2; // Bias / Luminosity Contribution / Distance Cutoff / Cutoff Falloff
 
@@ -27,18 +25,29 @@
 			return (value - from) / (to - from);
 		}
 
-		inline float3 getVSPosition(float2 uv)
+		inline float3 getWSPosition(float2 uv, float depth)
 		{
-			// Compute view space position from the view depth
-			float depth = LinearEyeDepth(tex2D(_CameraDepthTexture, uv).r);
-			float4 pos = float4((uv.x - 0.5) * 2.0, (0.5 - uv.y) * -2.0, 1.0, 1.0);
-			float4 ray = mul(pos, _InverseProj);
-			return ray.xyz * depth;
+			// Compute world space position from the view depth
+			float4 pos = float4(uv.xy * 2.0 - 1.0, depth, 1.0);
+			float4 ray = mul(_InverseViewProject, pos);
+			return ray.xyz / ray.w;
+		}
+
+		inline float3 getWSNormal(float2 uv)
+		{
+			// Get the view space normal and convert it to world space
+			float3 nn = tex2D(_CameraDepthNormalsTexture, uv).xyz * float3(3.5554, 3.5554, 0) + float3(-1.7777, -1.7777, 1.0);
+			float g = 2.0 / dot(nn.xyz, nn.xyz);
+			float3 vsnormal = float3(g * nn.xy, g - 1.0); // View space
+			float3 wsnormal = mul((float3x3)_CameraModelView, vsnormal); // World space
+			return wsnormal;
 		}
 
 		inline float calcAO(float2 tcoord, float2 uv, float3 p, float3 cnorm)
 		{
-			float3 diff = getVSPosition(tcoord + uv) - p; // View space position
+			float2 t = tcoord + uv;
+			float depth = tex2D(_CameraDepthTexture, t).x;
+			float3 diff = getWSPosition(t, depth) - p; // World space
 			float3 v = normalize(diff);
 			float d = length(diff) * _Params1.w;
 			return max(0.0, dot(cnorm, v) - _Params2.x) * (1.0 / (1.0 + d)) * _Params1.z;
@@ -47,19 +56,21 @@
 		float ssao(float2 uv)
 		{
 			const float2 vec[4] = { float2(1.0, 0.0), float2(-1.0, 0.0), float2(0.0, 1.0), float2(0.0, -1.0) };
-
-			float3 position = getVSPosition(uv); // View space position
-
-			float3 nn = tex2D(_CameraDepthNormalsTexture, uv).xyz * float3(3.5554, 3.5554, 0) + float3(-1.7777, -1.7777, 1.0);
-			float g = 2.0 / dot(nn.xyz, nn.xyz);
-			float3 normal = float3(g * nn.xy, g - 1.0); // View space normal
+			
+			float depth = tex2D(_CameraDepthTexture, uv).x;
+			float3 position = getWSPosition(uv, depth); // World space
+			float3 normal = getWSNormal(uv); // World space
 
 			#if NOISE_ON
-			float2 random = normalize(tex2D(_NoiseTex, _ScreenParams.xy * uv / _Params1.x).rg * 2.0f - 1.0f);
+			float2 random = normalize(tex2D(_NoiseTex, _ScreenParams.xy * uv / _Params1.x).rg * 2.0 - 1.0);
 			#endif
 
-			float ao = 0.0f;
-			float radius = _Params1.y / position.z;
+			float ao = 0.0;
+			float eyeDepth = LinearEyeDepth(depth);
+			float radius = _Params1.y / eyeDepth;
+
+			// Skip out of range pixels
+			clip(_Params2.z - eyeDepth);
 
 			for (int j = 0; j < 4; j++)
 			{
@@ -76,19 +87,19 @@
 				coord2 = float2(coord2.x - coord2.y, coord2.x + coord2.y);
 				#endif
   
-				#if SAMPLES_HIGH
+				#if SAMPLES_HIGH			// 16
 				ao += calcAO(uv, coord1 * 0.25, position, normal);
 				ao += calcAO(uv, coord2 * 0.50, position, normal);
 				ao += calcAO(uv, coord1 * 0.75, position, normal);
 				ao += calcAO(uv, coord2, position, normal);
-				#elif SAMPLES_MEDIUM
+				#elif SAMPLES_MEDIUM		// 12
 				ao += calcAO(uv, coord1 * 0.25, position, normal);
 				ao += calcAO(uv, coord2 * 0.50, position, normal);
 				ao += calcAO(uv, coord1 * 0.75, position, normal);
-				#elif SAMPLES_LOW
+				#elif SAMPLES_LOW			// 8
 				ao += calcAO(uv, coord1 * 0.25, position, normal);
 				ao += calcAO(uv, coord2 * 0.75, position, normal);
-				#elif SAMPLES_VERY_LOW
+				#elif SAMPLES_VERY_LOW		// 4
 				ao += calcAO(uv, coord1 * 0.50, position, normal);
 				#endif
 			}
@@ -103,11 +114,8 @@
 			ao /= 4.0;
 			#endif
 
-			ao = 1.0 - ao;
-
-			#if DISTANCE_CUTOFF_ON
-			ao = lerp(ao, 1.0, saturate(invlerp(_Params2.z - _Params2.w, _Params2.z, -position.z)));
-			#endif
+			// Distance cutoff
+			ao = lerp(1.0 - ao, 1.0, saturate(invlerp(_Params2.z - _Params2.w, _Params2.z, eyeDepth)));
 
 			return ao;
 		}
@@ -119,7 +127,40 @@
 		ZTest Always Cull Off ZWrite Off
 		Fog { Mode off }
 
-		// (0) SSAO
+		// (0) Clear
+		Pass
+		{
+			CGPROGRAM
+
+				#pragma vertex vert
+				#pragma fragment frag
+				#pragma fragmentoption ARB_precision_hint_fastest
+				#pragma exclude_renderers flash gles gles3
+				#pragma glsl
+				
+				struct v_data 
+				{
+					float4 pos : SV_POSITION; 
+					float2 uv : TEXCOORD0;
+				};
+
+				v_data vert(appdata_img v)
+				{
+					v_data o;
+					o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
+					o.uv = v.texcoord;        	        	
+					return o; 
+				}
+
+				float4 frag(v_data i) : COLOR
+				{
+					return float4(1.0, 1.0, 1.0, 1.0);
+				}
+
+			ENDCG
+		}
+
+		// (1) SSAO
 		Pass
 		{
 			CGPROGRAM
@@ -131,8 +172,7 @@
 				#pragma target 3.0
 				#pragma glsl
 
-				#pragma multi_compile SAMPLES_VERY_LOW SAMPLES_LOW  SAMPLES_MEDIUM  SAMPLES_HIGH
-				#pragma multi_compile DISTANCE_CUTOFF_ON  DISTANCE_CUTOFF_OFF
+				#pragma multi_compile SAMPLES_VERY_LOW  SAMPLES_LOW  SAMPLES_MEDIUM  SAMPLES_HIGH
 				#pragma multi_compile LUM_CONTRIB_ON  LUM_CONTRIB_OFF
 				#pragma multi_compile CUSTOM_COLOR_ON  CUSTOM_COLOR_OFF
 				#pragma multi_compile NOISE_ON  NOISE_OFF
@@ -206,7 +246,7 @@
 			ENDCG
 		}
 
-		// (1) Gaussian Blur
+		// (2) Gaussian Blur
 		Pass
 		{
 			CGPROGRAM
@@ -267,7 +307,7 @@
 			ENDCG
 		}
 
-		// (2) Bilateral Gaussian Blur
+		// (3) Bilateral Gaussian Blur
 		Pass
 		{
 			CGPROGRAM
@@ -305,16 +345,16 @@
 				float4 frag(v2f i) : COLOR
 				{
 					float4 depthTmp, coeff;
-					float depth = Linear01Depth(tex2D(_CameraDepthTexture, i.uv).r);
+					float depth = Linear01Depth(tex2D(_CameraDepthTexture, i.uv).x);
 
 					#if CUSTOM_COLOR_ON
 					
 					float3 c = tex2D(_MainTex, i.uv).rgb * 0.2270270270;
 					
-					depthTmp.x = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.xy).r);
-					depthTmp.y = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.zw).r);
-					depthTmp.z = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.xy).r);
-					depthTmp.w = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.zw).r);
+					depthTmp.x = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.xy).x);
+					depthTmp.y = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.zw).x);
+					depthTmp.z = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.xy).x);
+					depthTmp.w = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.zw).x);
 					coeff = 1.0 / (1e-05 + abs(depth - depthTmp));
 					c += tex2D(_MainTex, i.uv1.xy).rgb * coeff.x;
 					c += tex2D(_MainTex, i.uv1.zw).rgb * coeff.y;
@@ -328,10 +368,10 @@
 					
 					float c = tex2D(_MainTex, i.uv).r * 0.2270270270;
 
-					depthTmp.x = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.xy).r);
-					depthTmp.y = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.zw).r);
-					depthTmp.z = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.xy).r);
-					depthTmp.w = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.zw).r);
+					depthTmp.x = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.xy).x);
+					depthTmp.y = Linear01Depth(tex2D(_CameraDepthTexture, i.uv1.zw).x);
+					depthTmp.z = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.xy).x);
+					depthTmp.w = Linear01Depth(tex2D(_CameraDepthTexture, i.uv2.zw).x);
 					coeff = 1.0 / (1e-05 + abs(depth - depthTmp));
 					c += tex2D(_MainTex, i.uv1.xy).r * coeff.x;
 					c += tex2D(_MainTex, i.uv1.zw).r * coeff.y;
@@ -347,7 +387,7 @@
 			ENDCG
 		}
 
-		// (3) Composite
+		// (4) Composite
 		Pass
 		{
 			CGPROGRAM

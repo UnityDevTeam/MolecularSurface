@@ -121,7 +121,6 @@ MonoBehaviour:
   Opacity: 1
   NumSteps: 256
   VolumeSize: 128
-  RayOffset: 1
   SurfaceSmoothness: .800000012
   IntensityThreshold: .100000001
 --- !u!114 &524774159
@@ -152,22 +151,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3a970acddb8696a4792ca6e022840a0e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  NoiseTexture: {fileID: 0}
-  Samples: 3
+  Mode: 1
+  NoiseTexture: {fileID: 2800000, guid: 45ca7cd7d934d6245bb4539f780e4892, type: 3}
+  Samples: 2
   Downsampling: 1
-  Radius: .00999999978
-  Intensity: 2.07999992
-  Distance: 8.85999966
-  Bias: .114
-  LumContribution: .145999998
-  OcclusionColor: {r: .0184793137, g: .00583910616, b: .0220588446, a: 1}
-  CutoffEnabled: 1
-  CutoffDistance: 500
-  CutoffFalloff: 75
-  Blur: 2
+  Radius: .125
+  Intensity: 2
+  Distance: 1
+  Bias: .100000001
+  LumContribution: .600000024
+  OcclusionColor: {r: 0, g: 0, b: 0, a: 1}
+  CutoffDistance: 200
+  CutoffFalloff: 50
+  Blur: 0
   BlurDownsampling: 0
   DebugAO: 0
-  Shader: {fileID: 4800000, guid: 8aa7caa29893e3843ad6f6fd3f58fcfb, type: 3}
 --- !u!20 &524774161
 Camera:
   m_ObjectHideFlags: 0
@@ -184,7 +182,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 1
+  near clip plane: .100000001
   far clip plane: 100
   field of view: 45
   orthographic: 0
