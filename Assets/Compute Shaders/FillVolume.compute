@@ -1,0 +1,52 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+uniform int _AtomCount;
+uniform int _VolumeSize;
+
+uniform float _Scale;
+uniform float _SurfaceSmoothness;
+
+StructuredBuffer<float4> _AtomBuffer;
+RWStructuredBuffer<int> _VoxelBuffer;
+
+[numthreads(64,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	if(id.x >= _AtomCount) return;
+
+	float4 atom = _AtomBuffer[id.x] * _Scale;	
+	atom.xyz += _VolumeSize * 0.5;
+	
+	float atomSquare = atom.w * atom.w;
+	float evalSize = atom.w * 2;
+	
+	for(int x = -evalSize; x <= evalSize; x ++)
+	{
+		for(int y = -evalSize; y <= evalSize; y ++)
+		{
+			for(int z = -evalSize; z <= evalSize; z ++)
+			{	
+				int3 local = int3(x,y,z);
+				int3 global = atom.xyz + local;
+				
+				int idx = global.x + global.y * _VolumeSize + global.z * _VolumeSize * _VolumeSize;
+					
+
+				if(any(step(global, float3(-1,-1,-1)))) continue;
+				if(any(step(float3(_VolumeSize,_VolumeSize,_VolumeSize), global))) continue;
+
+				float r = dot(local, local);
+				float b = _SurfaceSmoothness;
+				float a = -log(0.5f/b)/(atomSquare);
+				float gauss_f = b*exp(-(r*a));
+
+				
+				int original_value = 0;				
+				InterlockedAdd(_VoxelBuffer[idx], gauss_f * 100, original_value);		
+				
+					
+			}
+		}
+	}    
+}
