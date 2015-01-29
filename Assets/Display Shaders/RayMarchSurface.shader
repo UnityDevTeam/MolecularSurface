@@ -84,33 +84,15 @@
 		float delta_dir_len = length(delta_dir);
 		float length_max = length(dir.xyz);
 		float length_acc = 0;	
-
-		// Do view-space offset here
-
-		//float3 planeNormal = normalize(_WorldSpaceCameraPos);
-		//float3 planePosition = planeNormal * _OffsetDist;
-
-		//float dist = (dot(-planeNormal, (back_pos - 0.5) - planePosition));			
-		
-		//if(dist < 0) return;
-		
-		//int numStepOffset = (dist < length_max) ? (length_max - dist) / _StepSize : 0;		
-
-		//numStepOffset += 10;
-
-		//current_pos += (numStepOffset * delta_dir);
-		//length_acc += (numStepOffset * delta_dir_len);
-
-		// Do ray casting here
-
-		float current_intensity;	
-		float previous_intensity;	
-
+			
 		bool seek_depth = true;
 		bool seek_first = true;
 		bool found_lastpos = false;
 
 		float3 last_pos = float3(0,0,0);
+
+		float current_intensity = 0;	
+		float previous_intensity = 0;	
 
 		[loop]
 		[allow_uav_condition]
@@ -147,9 +129,7 @@
 				last_pos = current_pos;
 				found_lastpos = true;
 			}			
-
-
-
+			
 			previous_intensity = current_intensity;
 
 			current_pos += delta_dir;

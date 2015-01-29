@@ -16,23 +16,19 @@ public class RayMarching : MonoBehaviour
     public ComputeShader BlitVolume;
 
     public Mesh CubeMesh;
-
     public Color SurfaceColor;
 
     [Range(1, 16)]
     public float Scale = 1;
 
     [Range(0, 1)]
-    public float Opacity = 100;
+    public float Opacity = 1;
     
     [Range(32, 512)]
-    public int NumSteps = 512;
+    public int NumSteps = 256;
 
     [Range(128, 1024)]
-    public int VolumeSize = 512;
-    
-    [Range(-1, 1)]
-    public float RayOffset = 1;
+    public int VolumeSize = 128;
 
     [Range(0.5f, 10)]
     public float SurfaceSmoothness = 0.8f;
@@ -45,7 +41,7 @@ public class RayMarching : MonoBehaviour
     private Material _backDepthMaterial;
 
     private ComputeBuffer _voxelBuffer;
-    private ComputeBuffer atomBuffer;
+    private ComputeBuffer _atomBuffer;
     private RenderTexture _volumeTexture;
 
 	private void OnEnable()
@@ -57,7 +53,7 @@ public class RayMarching : MonoBehaviour
 
     private void OnDisable()
     {
-        if (atomBuffer != null) atomBuffer.Release(); atomBuffer = null;
+        if (_atomBuffer != null) _atomBuffer.Release(); _atomBuffer = null;
         if (_voxelBuffer != null) _voxelBuffer.Release(); _voxelBuffer = null;
         if (_volumeTexture != null) _volumeTexture.Release(); _volumeTexture = null;
     }
@@ -69,51 +65,24 @@ public class RayMarching : MonoBehaviour
     
 	private void CreateResources()
 	{
-		_volumeTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.RFloat);
-        _volumeTexture.volumeDepth = VolumeSize;
-        _volumeTexture.isVolume = true;
-        _volumeTexture.enableRandomWrite = true;
-        _volumeTexture.filterMode = FilterMode.Bilinear;
-        _volumeTexture.Create();
+        string pdbPath = Application.dataPath + "/Molecules/1.pdb";
+        var atoms = PdbReader.ReadPdbFile(pdbPath);
+        _atomBuffer = new ComputeBuffer(atoms.Count, sizeof(float) * 4, ComputeBufferType.Default);
+        _atomBuffer.SetData(atoms.ToArray());
 
         _voxelBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, sizeof(float), ComputeBufferType.Default);
 
-        //var v = new float[_voxelBuffer.count];
-        //for (var i = 0; i < v.Length; i++) v[i] = 10;
-
-        //_voxelBuffer.SetData(v);
-
-        string pdbPath = Application.dataPath + "/Molecules/" + "1.pdb";
-        var atoms = PdbReader.ReadPdbFile(pdbPath);
-
-        atomBuffer = new ComputeBuffer(atoms.Count, sizeof(float) * 4, ComputeBufferType.Default);
-        atomBuffer.SetData(atoms.ToArray());
+        _volumeTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.RFloat);
+        _volumeTexture.volumeDepth = VolumeSize;
+        _volumeTexture.isVolume = true;
+        _volumeTexture.enableRandomWrite = true;
+        _volumeTexture.filterMode = FilterMode.Trilinear;
+        _volumeTexture.Create();
 	}
-
-    private void Update()
-    {
-        
-    }
-
-
-    private RenderTexture _cameraDepthBuffer;
-
+    
     [ImageEffectOpaque]
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
-        if (_cameraDepthBuffer != null && (_cameraDepthBuffer.width != Screen.width || _cameraDepthBuffer.height != Screen.height))
-        {
-            _cameraDepthBuffer.Release(); _cameraDepthBuffer = null;
-        }
-
-        if (_cameraDepthBuffer == null)
-        {
-            _cameraDepthBuffer = new RenderTexture(source.width, source.height, 24, RenderTextureFormat.Depth);
-            _cameraDepthBuffer.anisoLevel = 9;
-            _cameraDepthBuffer.filterMode = FilterMode.Trilinear;
-        }
-
-
         // Init the volume data with zeros 
         InitVolume.SetInt("_VolumeSize", VolumeSize);
         InitVolume.SetTexture(0, "_VolumeTexture", _volumeTexture);
@@ -122,37 +91,35 @@ public class RayMarching : MonoBehaviour
         
         // Fill the volume data with atom values
         FillVolume.SetInt("_VolumeSize", VolumeSize);
-        FillVolume.SetInt("_AtomCount", atomBuffer.count);
-        
+        FillVolume.SetInt("_AtomCount", _atomBuffer.count);
         FillVolume.SetFloat("_Scale", Scale);
         FillVolume.SetFloat("_SurfaceSmoothness", SurfaceSmoothness);
-        
-        FillVolume.SetBuffer(0, "_AtomBuffer", atomBuffer);
+        FillVolume.SetBuffer(0, "_AtomBuffer", _atomBuffer);
         FillVolume.SetBuffer(0, "_VoxelBuffer", _voxelBuffer);
-        FillVolume.Dispatch(0, (int)Mathf.Ceil((atomBuffer.count) / 64.0f), 1, 1);
+        FillVolume.Dispatch(0, (int)Mathf.Ceil((_atomBuffer.count) / 64.0f), 1, 1);
 
+        // Blit linear buffer in 3D texture
         BlitVolume.SetInt("_VolumeSize", VolumeSize);
         BlitVolume.SetBuffer(0, "_VoxelBuffer", _voxelBuffer);
         BlitVolume.SetTexture(0, "_VolumeTexture", _volumeTexture);
         BlitVolume.Dispatch(0, VolumeSize / 8, VolumeSize / 8, VolumeSize / 8);
 
-       // Render cube back depth
+        // Render cube back depth
         var backDepth = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGBFloat);
         Graphics.SetRenderTarget(backDepth);
         GL.Clear(true, true, new Color(0, 0, 0, 0));
 
         _backDepthMaterial.SetPass(0);
-
         Graphics.DrawMeshNow(CubeMesh, GetComponent<MouseOrbit>().target, Quaternion.identity);
         
         // Render volume
+        var cameraDepthBuffer = RenderTexture.GetTemporary(source.width, source.height, 24, RenderTextureFormat.Depth);
         var volumeTarget = RenderTexture.GetTemporary(source.width, source.height, 0, source.format);
-        Graphics.SetRenderTarget(volumeTarget.colorBuffer, _cameraDepthBuffer.depthBuffer);
+        Graphics.SetRenderTarget(volumeTarget.colorBuffer, cameraDepthBuffer.depthBuffer);
         GL.Clear(true, true, new Color(0, 0, 0, 0));
 
         _rayMarchMaterial.SetInt("_VolumeSize", VolumeSize);
         _rayMarchMaterial.SetFloat("_Opacity", Opacity);
-        _rayMarchMaterial.SetFloat("_OffsetDist", RayOffset);
         _rayMarchMaterial.SetFloat("_StepSize", 1.0f / NumSteps);
         _rayMarchMaterial.SetFloat("_IntensityThreshold", IntensityThreshold);
         _rayMarchMaterial.SetColor("_SurfaceColor", SurfaceColor);
@@ -162,12 +129,14 @@ public class RayMarching : MonoBehaviour
 
         Graphics.DrawMeshNow(CubeMesh, Vector3.zero, Quaternion.identity);
 
-        Shader.SetGlobalTexture("_CameraDepthTexture", _cameraDepthBuffer);
+        // Change unity's camera depth texture with our own depth buffer
+        Shader.SetGlobalTexture("_CameraDepthTexture", cameraDepthBuffer);
 
         // Composite pass
         _compositeMaterial.SetTexture("_BlendTex", volumeTarget);
         Graphics.Blit(source, destination, _compositeMaterial);
 
+        RenderTexture.ReleaseTemporary(cameraDepthBuffer);
         RenderTexture.ReleaseTemporary(volumeTarget);
         RenderTexture.ReleaseTemporary(backDepth);
     }

@@ -36,22 +36,10 @@ public static class PdbReader
             {
                 var split = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 var position = split.Where(s => s.Contains(".")).ToList();
+                var symbol = Array.IndexOf(AtomSymbols, split[2][0].ToString());
+                if (symbol < 0) throw new Exception("Symbol not found");
 
-                string c = split[2][0].ToString();
-                int symbol = Array.IndexOf(AtomSymbols, c);
-
-                var atom = new Vector4();
-
-                if (symbol < 0)
-                {
-                    Debug.Log("Atom symbol not found");
-                    atom.Set(float.Parse(position[0]), float.Parse(position[1]), float.Parse(position[2]), 1.5f);
-                }
-                else
-                {
-                    atom.Set(float.Parse(position[0]), float.Parse(position[1]), float.Parse(position[2]), AtomRadii[symbol]);
-                }
-
+                var atom = new Vector4(float.Parse(position[0]), float.Parse(position[1]), float.Parse(position[2]), AtomRadii[symbol]);
                 atoms.Add(atom);
             }
 
