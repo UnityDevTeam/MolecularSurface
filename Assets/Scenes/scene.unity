@@ -139,7 +139,7 @@ MonoBehaviour:
   ySpeed: 120
   yMinLimit: -90
   yMaxLimit: 90
-  distance: 2
+  distance: 1
 --- !u!114 &524774160
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -153,7 +153,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Mode: 1
   NoiseTexture: {fileID: 2800000, guid: 45ca7cd7d934d6245bb4539f780e4892, type: 3}
-  Samples: 2
+  Samples: 3
   Downsampling: 1
   Radius: .125
   Intensity: 2
@@ -163,7 +163,7 @@ MonoBehaviour:
   OcclusionColor: {r: 0, g: 0, b: 0, a: 1}
   CutoffDistance: 200
   CutoffFalloff: 50
-  Blur: 0
+  Blur: 2
   BlurDownsampling: 0
   DebugAO: 0
 --- !u!20 &524774161
@@ -184,7 +184,7 @@ Camera:
     height: 1
   near clip plane: .100000001
   far clip plane: 100
-  field of view: 45
+  field of view: 60
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
