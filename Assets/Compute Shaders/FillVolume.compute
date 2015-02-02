@@ -8,7 +8,22 @@ uniform float _Scale;
 uniform float _SurfaceSmoothness;
 
 StructuredBuffer<float4> _AtomBuffer;
-RWStructuredBuffer<int> _VoxelBuffer;
+RWStructuredBuffer<uint> _VoxelBuffer;
+RWStructuredBuffer<uint> _NormalBuffer;
+
+
+
+
+uint float2Touint(float2 f2Value)
+{
+	return (f32tof16(f2Value.x) + (f32tof16(f2Value.y) << 16));
+}
+
+// Unpacks a uint to a float2
+float2 uintTofloat2(uint uValue)
+{
+	return float2(f16tof32(uValue), f16tof32(uValue >> 16));
+}
 
 [numthreads(64,1,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
@@ -20,6 +35,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	
 	float atomSquare = atom.w * atom.w;
 	float evalSize = atom.w * 2;
+	float SR = 1.4f;
 	
 	for(int x = -evalSize; x <= evalSize; x ++)
 	{
@@ -36,16 +52,36 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 				if(any(step(global, float3(-1,-1,-1)))) continue;
 				if(any(step(float3(_VolumeSize,_VolumeSize,_VolumeSize), global))) continue;
 
-				float r = dot(local, local);
-				float b = _SurfaceSmoothness;
-				float a = -log(0.5f/b)/(atomSquare);
-				float gauss_f = b*exp(-(r*a));
-
 				
+				float f = atom.w - sqrt(dot(local, local));
+				float3 n = normalize(local - atom.xyz);
+				uint _vox_buf = _VoxelBuffer[idx];
+				uint _nor_buf = _NormalBuffer[idx];
+				float2 a1 = uinTofloat2(_vox_buf);
+				float2 a2 = uinTofloat2(_nor_buf);
+				float prev_f = a1.x;
+				float3 prev_n =  float3(a1.y,a2.x,a2.y);
+				float k = dot(n,prev_n);
+				float s = 1.0f-sin(k*0.78f);
+				float XR = s*SR;
+				float disc = 2*XR*XR - prev_f*prev_f + 2*prev_f*f - f*f;
+				if (prev_f<=(f+XR) && f<=(prev_f+XR)) {
+					float sq_disc = sqrt(disc);
+					prev_n = 0.5*(prev_n+n-(f*prev_n+prev_f*n-prev_f*prev_n-f*n)/sq_disc);
+					//XD=normalize(XD);
+					prev_f = 0.5*(2*XR + prev_f + f - sq_disc);
+					prev_n=prev_n*(1.0/(1.0+prev_f*prev_f*length(prev_n)));
+				} else if (f>prev_f) {
+					prev_f = f;
+					prev_n = n;
+				}
 				int original_value = 0;				
-				InterlockedAdd(_VoxelBuffer[idx], gauss_f * 100, original_value);		
-				
-					
+				uint _vox_buf = float2Touint(float2(prev_f, prev_n.x));
+				uint _nor_buf = float2Touint(float2(prev_n.y, prev_n.z));
+				float prev_f = a1.x;
+				float3 prev_n =  float3(a1.y,a2.x,a2.y);
+				InterlockedExchange(_VoxelBuffer[idx], _vox_buf, original_value);
+				InterlockedExchange(_NormalBuffer[idx], _nor_buf, original_value3);		
 			}
 		}
 	}    
