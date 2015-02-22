@@ -42,7 +42,9 @@ public class RayMarching : MonoBehaviour
 
     private ComputeBuffer _voxelBuffer;
     private ComputeBuffer _atomBuffer;
+	private ComputeBuffer _normalBuffer;
     private RenderTexture _volumeTexture;
+	private RenderTexture _normalTexture;
 
 	private void OnEnable()
 	{
@@ -55,7 +57,9 @@ public class RayMarching : MonoBehaviour
     {
         if (_atomBuffer != null) _atomBuffer.Release(); _atomBuffer = null;
         if (_voxelBuffer != null) _voxelBuffer.Release(); _voxelBuffer = null;
+		if (_normalBuffer != null) _normalBuffer.Release(); _normalBuffer = null;
         if (_volumeTexture != null) _volumeTexture.Release(); _volumeTexture = null;
+		if (_normalTexture != null) _normalTexture.Release(); _normalTexture = null;
     }
 
 	private void Start()
@@ -71,6 +75,7 @@ public class RayMarching : MonoBehaviour
         _atomBuffer.SetData(atoms.ToArray());
 
         _voxelBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, sizeof(float), ComputeBufferType.Default);
+		_normalBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, sizeof(float), ComputeBufferType.Default);
 
         _volumeTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.RFloat);
         _volumeTexture.volumeDepth = VolumeSize;
@@ -78,6 +83,13 @@ public class RayMarching : MonoBehaviour
         _volumeTexture.enableRandomWrite = true;
         _volumeTexture.filterMode = FilterMode.Trilinear;
         _volumeTexture.Create();
+
+		_normalTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.RFloat);
+		_normalTexture.volumeDepth = VolumeSize;
+		_normalTexture.isVolume = true;
+		_normalTexture.enableRandomWrite = true;
+		_normalTexture.filterMode = FilterMode.Trilinear;
+		_normalTexture.Create();
 	}
     
     [ImageEffectOpaque]
@@ -95,6 +107,7 @@ public class RayMarching : MonoBehaviour
         FillVolume.SetFloat("_Scale", Scale);
         FillVolume.SetFloat("_SurfaceSmoothness", SurfaceSmoothness);
         FillVolume.SetBuffer(0, "_AtomBuffer", _atomBuffer);
+		FillVolume.SetBuffer(0, "_NormalBuffer", _normalBuffer);
         FillVolume.SetBuffer(0, "_VoxelBuffer", _voxelBuffer);
         FillVolume.Dispatch(0, (int)Mathf.Ceil((_atomBuffer.count) / 64.0f), 1, 1);
 
