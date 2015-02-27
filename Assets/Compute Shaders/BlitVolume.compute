@@ -3,21 +3,14 @@
 uniform int _VolumeSize;
 
 RWTexture3D<float4> _VolumeTexture;
-StructuredBuffer<int4> _VoxelBuffer;
-
-
-
-// Unpacks a uint to a float2
-float2 uintTofloat2(uint uValue)
-{
-	return float2(f16tof32(uValue), f16tof32(uValue >> 16));
-}
+StructuredBuffer<float4> _VoxelBuffer;
 
 [numthreads(8,8,8)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	uint idx = id.x + id.y * _VolumeSize + id.z * _VolumeSize * _VolumeSize; 	
 	//convert data
-	_VolumeTexture[id] = _VoxelBuffer[idx] / 1000.0f;
+	float4 val4 = _VoxelBuffer[idx];
+	_VolumeTexture[id] = val4;
 //	_VolumeTexture[id] = float4(_VoxelBuffer[idx].x / 1000.0f,_NormalBuffer1[idx] / 1000.0f,_NormalBuffer2[idx] / 1000.0f,_NormalBuffer3[idx] / 1000.0f);
 }

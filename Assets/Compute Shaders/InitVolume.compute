@@ -1,8 +1,8 @@
 ﻿#pragma kernel CSMain
 
 uniform int _VolumeSize;
-RWStructuredBuffer<int4> _VoxelBuffer;
-RWBuffer<uint> _VoxelFlagBuffer;
+globallycoherent RWStructuredBuffer<float4> _VoxelBuffer;
+globallycoherent RWStructuredBuffer<uint> _VoxelFlagBuffer;
 
 
 uint float2Touint(float2 f2Value)
@@ -14,7 +14,7 @@ uint float2Touint(float2 f2Value)
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	uint idx = id.x + id.y * _VolumeSize + id.z * _VolumeSize * _VolumeSize; 
-//	_VoxelBuffer[idx] = float2Touint(-99999.9f,1.0f);  
-	_VoxelBuffer[idx] = int4(-9999999,1000,0,0);   
-	_VoxelFlagBuffer[idx]=0; 
+	_VoxelBuffer[idx] = float4(-10.0f,1,0,0);    
+//	_VoxelBuffer[idx] = float4(0,0,0,0);   
+	_VoxelFlagBuffer[idx]=1; 
 }

@@ -120,6 +120,7 @@ MonoBehaviour:
   Scale: 1.79999995
   Opacity: 1
   NumSteps: 256
+  IterCount: 100
   VolumeSize: 128
   SurfaceSmoothness: .800000012
   IntensityThreshold: 0

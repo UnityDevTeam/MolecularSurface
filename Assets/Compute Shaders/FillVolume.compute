@@ -3,13 +3,14 @@
 
 uniform int _AtomCount;
 uniform int _VolumeSize;
+uniform int _IterCount;
 
 uniform float _Scale;
 uniform float _SurfaceSmoothness;
 
 StructuredBuffer<float4> _AtomBuffer;
-RWStructuredBuffer<int4> _VoxelBuffer;
-RWBuffer<uint> _VoxelFlagBuffer;
+globallycoherent RWStructuredBuffer<float4> _VoxelBuffer ;
+globallycoherent RWStructuredBuffer<uint> _VoxelFlagBuffer;
 
 
 
@@ -29,6 +30,7 @@ float2 uintTofloat2(uint uValue)
 [numthreads(64,1,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
+			
 	if(id.x >= _AtomCount) return;
 
 	float4 atom = _AtomBuffer[id.x] * _Scale;	
@@ -37,54 +39,131 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float atomSquare = atom.w * atom.w;
 	float evalSize = atom.w * 2;
 	float SR = 1.4f*_Scale;
-	
-	for(int x = -evalSize; x <= evalSize; x ++)
+	float SRSquare = SR*SR;
+	atom.w*=0.8;
+//	float3 toBeDone[1000];
+//	int	   toBeDoneCount=0;
+	[loop]
+	[allow_uav_condition]
+	for(float x = -evalSize; x <= evalSize; x ++)
 	{
-		for(int y = -evalSize; y <= evalSize; y ++)
+		[allow_uav_condition]
+		for( float y = -evalSize; y <= evalSize; y ++)
 		{
-			for(int z = -evalSize; z <= evalSize; z ++)
+			[allow_uav_condition]			
+			for(float z = -evalSize; z <= evalSize; z ++)
 			{	
-				int3 local = int3(x,y,z);
+				float3 local = float3(x,y,z);
 				int3 global = atom.xyz + local;
 				
 				int idx = global.x + global.y * _VolumeSize + global.z * _VolumeSize * _VolumeSize;
 					
+//				if (x==0 && y==0 && z==0) continue;
+				if(any(step(global, float3(-1,-1,-1)))) {continue;}
+				if(any(step(float3(_VolumeSize,_VolumeSize,_VolumeSize), global))) {continue;}
 
-				if(any(step(global, float3(-1,-1,-1)))) continue;
-				if(any(step(float3(_VolumeSize,_VolumeSize,_VolumeSize), global))) continue;
-
+				uint readEnabled=0;
+//				int iter=0;
+//				[loop]
+//				[allow_uav_condition]
+//				while (readEnabled!=0 && iter<_IterCount){
+//					InterlockedCompareExchange(_VoxelFlagBuffer[idx],0,1,readEnabled);
+//					iter++;
+//				}
 				
-				float f = atom.w - sqrt(dot(local, local));
-				uint readEnabled=1;
-				int iter=0;
-				[allow_uav_condition]
-				while (readEnabled!=0 && iter<500){
-					InterlockedCompareExchange(_VoxelFlagBuffer[idx],0,1,readEnabled);
-					iter++;
+				InterlockedCompareExchange(_VoxelFlagBuffer[idx],1,0,readEnabled);
+				if (readEnabled!=1) {
+					continue;
 				}
 				int4 _vox_buf = _VoxelBuffer[idx];
-				float prev_f = _vox_buf.x / 1000.0f;
+				float prev_f = _vox_buf.x;
+				float3 prev_n = float3(_vox_buf.yzw);
+				
+				/*
 				int original_value = 0;	
-				float3 n = normalize(local - atom.xyz);
-				float3 prev_n = float3(_vox_buf.y / 1000.0f,_vox_buf.z / 1000.0f,_vox_buf.w / 1000.0f);
-				float k = dot(n,prev_n);
-				float s = 1.0f-sin(k*0.78f);
-				float XR = s*SR;
-//				float XR = SR;
-				float disc = 2*XR*XR - prev_f*prev_f + 2*prev_f*f - f*f;
-				if (prev_f<=(f+XR) && f<=(prev_f+XR)) {
-					float sq_disc = sqrt(disc);
-					prev_n = 0.5*(prev_n+n-(f*prev_n+prev_f*n-prev_f*prev_n-f*n)/sq_disc);
-					prev_f = 0.5*(2*XR + prev_f + f - sq_disc);
-					prev_n=prev_n*(1.0/(1.0+prev_f*prev_f*length(prev_n)));
-				} else if (f>prev_f) {
+				int4 _vox_buf = _VoxelBuffer[idx];
+				float prev_f = _vox_buf.x;
+				float3 prev_n = float3(_vox_buf.yzw);
+				float3 n = local;
+				float r = dot(local, local);
+				float b = SR*SR;
+				float a = -log(0.5f/b)/(atomSquare);
+				float gauss_f = b*exp(-(r*a));
+				prev_f = prev_f+gauss_f;
+				prev_n = prev_n + 2.0*b*a*gauss_f*n;
+				*/
+
+				float f = atomSquare - dot(local, local);
+				float3 n = normalize(local);
+				int original_value = 0;	
+//				if (prev_f<f) {
+//					prev_f=f;
+//					prev_n=n;
+//				}
+				if (prev_f > -10.0f) {
+					float k = dot(n,prev_n);
+					float s = 1.0f-sin(k*0.785f);
+					float cc = (prev_f-f); 
+					float cc2=cc*cc; 
+//					float XR = s*SR;
+					float XR = s*SRSquare;
+					float XR2=XR*XR;
+					if (cc2/XR2<1.0) {
+						float disc = 2*XR2 - cc2;
+						float sq_disc = sqrt(disc);
+						prev_n = 0.5*(prev_n+n-(f*prev_n+prev_f*n-prev_f*prev_n-f*n)/sq_disc);
+						prev_f = 0.5*(2*XR + prev_f + f - sq_disc);
+//						prev_n=prev_n*(1.0/(1.0+prev_f*prev_f*length(prev_n)));
+					} 
+//					else if (f>prev_f) {
+//						prev_f = f;
+//						prev_n = n;
+//					}
+//					prev_n = normalize(prev_n);
+				} else {
 					prev_f = f;
 					prev_n = n;
-				}
-//				prev_n = normalize(prev_n);
-				_VoxelBuffer[idx] = int4(prev_f * 1000,prev_n.x * 1000,prev_n.y * 1000,prev_n.z * 1000);
-				InterlockedExchange(_VoxelFlagBuffer[idx],0,original_value);
+				}				
+				_VoxelBuffer[idx] = float4(prev_f,prev_n.x,prev_n.y,prev_n.z);
+//				InterlockedExchange(_VoxelFlagBuffer[idx],0,original_value);
+				_VoxelFlagBuffer[idx]=1;
 			}
 		}    
 	}
+//	[loop]
+//	for (int i=0;i<toBeDoneCount;i++) {
+//		float3 local = toBeDone[i];
+//		int3 global = atom.xyz + local;
+//		int idx = global.x + global.y * _VolumeSize + global.z * _VolumeSize * _VolumeSize;
+//		float f = atomSquare - dot(local, local);
+//		float3 n = normalize(local);
+//		uint readEnabled=1;
+//		InterlockedCompareExchange(_VoxelFlagBuffer[idx],0,1,readEnabled);
+//		if (readEnabled!=0) {
+//			continue;
+//		}
+//		int4 _vox_buf = _VoxelBuffer[idx];
+//		float prev_f = _vox_buf.x;
+//		float3 prev_n = float3(_vox_buf.yzw);
+//		int original_value = 0;	
+//		if (prev_f > -10.0f) {
+//			float k = dot(n,prev_n);
+//			float s = 1.0f-sin(k*0.785f);
+//			float cc = (prev_f-f); 
+//			float cc2=cc*cc; 
+//			float XR = s*SRSquare;
+//			float XR2=XR*XR;
+//			if (cc2/XR2<1.0) {
+//				float disc = 2*XR2 - cc2;
+//				float sq_disc = sqrt(disc);
+//				prev_n = 0.5*(prev_n+n-(f*prev_n+prev_f*n-prev_f*prev_n-f*n)/sq_disc);
+//				prev_f = 0.5*(2*XR + prev_f + f - sq_disc);
+//			} 
+//		} else {
+//			prev_f = f;
+//			prev_n = n;
+//		}
+//		_VoxelBuffer[idx] = float4(prev_f,prev_n.x,prev_n.y,prev_n.z);
+//		_VoxelFlagBuffer[idx]=0;
+//	}
 }

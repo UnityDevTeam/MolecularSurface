@@ -27,7 +27,10 @@ public class RayMarching : MonoBehaviour
     [Range(32, 512)]
     public int NumSteps = 256;
 
-    [Range(128, 1024)]
+	[Range(10, 500)]
+	public int IterCount = 10;
+	
+	[Range(128, 1024)]
     public int VolumeSize = 128;
 
     [Range(0.5f, 10)]
@@ -74,7 +77,7 @@ public class RayMarching : MonoBehaviour
         var atoms = PdbReader.ReadPdbFile(pdbPath);
         _atomBuffer = new ComputeBuffer(atoms.Count, sizeof(float) * 4, ComputeBufferType.Default);
         _atomBuffer.SetData(atoms.ToArray());
-        _voxelBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, 4*sizeof(int), ComputeBufferType.Default);
+        _voxelBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, 4*sizeof(float), ComputeBufferType.Default);
 		_voxelFlagBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, sizeof(uint), ComputeBufferType.Default);
 
 		_volumeTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.ARGBFloat);
@@ -102,18 +105,19 @@ public class RayMarching : MonoBehaviour
 		InitVolume.SetBuffer(0, "_VoxelFlagBuffer", _voxelFlagBuffer);
         InitVolume.Dispatch(0, VolumeSize / 8, VolumeSize / 8, VolumeSize / 8);
         
+//		Graphics.SetRandomWriteTarget (0, _voxelBuffer);
+//		Graphics.SetRandomWriteTarget (1, _voxelFlagBuffer);
         // Fill the volume data with atom values
         FillVolume.SetInt("_VolumeSize", VolumeSize);
         FillVolume.SetInt("_AtomCount", _atomBuffer.count);
+		FillVolume.SetInt("_IterCount", IterCount);
         FillVolume.SetFloat("_Scale", Scale);
         FillVolume.SetFloat("_SurfaceSmoothness", SurfaceSmoothness);
         FillVolume.SetBuffer(0, "_AtomBuffer", _atomBuffer);
-//		FillVolume.SetBuffer(0, "_NormalBuffer1", _normalBuffer[0]);
-//		FillVolume.SetBuffer(0, "_NormalBuffer2", _normalBuffer[1]);
-//		FillVolume.SetBuffer(0, "_NormalBuffer3", _normalBuffer[2]);
         FillVolume.SetBuffer(0, "_VoxelBuffer", _voxelBuffer);
 		FillVolume.SetBuffer(0, "_VoxelFlagBuffer", _voxelFlagBuffer);
         FillVolume.Dispatch(0, (int)Mathf.Ceil((_atomBuffer.count) / 64.0f), 1, 1);
+		FillVolume.Dispatch(0, (int)Mathf.Ceil((_atomBuffer.count) / 64.0f), 1, 1);
 //		FillVolume.Dispatch(0, (int)Mathf.Ceil((_atomBuffer.count) / 64.0f), 1, 1);
 
         // Blit linear buffer in 3D texture
