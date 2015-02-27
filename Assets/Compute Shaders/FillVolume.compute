@@ -8,8 +8,9 @@ uniform float _Scale;
 uniform float _SurfaceSmoothness;
 
 StructuredBuffer<float4> _AtomBuffer;
-RWStructuredBuffer<uint> _VoxelBuffer;
-RWStructuredBuffer<uint> _NormalBuffer;
+RWStructuredBuffer<int4> _VoxelBuffer;
+RWBuffer<uint> _VoxelFlagBuffer;
+
 
 
 
@@ -35,7 +36,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	
 	float atomSquare = atom.w * atom.w;
 	float evalSize = atom.w * 2;
-	float SR = 1.4f;
+	float SR = 1.4f*_Scale;
 	
 	for(int x = -evalSize; x <= evalSize; x ++)
 	{
@@ -54,35 +55,36 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
 				
 				float f = atom.w - sqrt(dot(local, local));
+				uint readEnabled=1;
+				int iter=0;
+				[allow_uav_condition]
+				while (readEnabled!=0 && iter<500){
+					InterlockedCompareExchange(_VoxelFlagBuffer[idx],0,1,readEnabled);
+					iter++;
+				}
+				int4 _vox_buf = _VoxelBuffer[idx];
+				float prev_f = _vox_buf.x / 1000.0f;
+				int original_value = 0;	
 				float3 n = normalize(local - atom.xyz);
-				uint _vox_buf = _VoxelBuffer[idx];
-				uint _nor_buf = _NormalBuffer[idx];
-				float2 a1 = uinTofloat2(_vox_buf);
-				float2 a2 = uinTofloat2(_nor_buf);
-				float prev_f = a1.x;
-				float3 prev_n =  float3(a1.y,a2.x,a2.y);
+				float3 prev_n = float3(_vox_buf.y / 1000.0f,_vox_buf.z / 1000.0f,_vox_buf.w / 1000.0f);
 				float k = dot(n,prev_n);
 				float s = 1.0f-sin(k*0.78f);
 				float XR = s*SR;
+//				float XR = SR;
 				float disc = 2*XR*XR - prev_f*prev_f + 2*prev_f*f - f*f;
 				if (prev_f<=(f+XR) && f<=(prev_f+XR)) {
 					float sq_disc = sqrt(disc);
 					prev_n = 0.5*(prev_n+n-(f*prev_n+prev_f*n-prev_f*prev_n-f*n)/sq_disc);
-					//XD=normalize(XD);
 					prev_f = 0.5*(2*XR + prev_f + f - sq_disc);
 					prev_n=prev_n*(1.0/(1.0+prev_f*prev_f*length(prev_n)));
 				} else if (f>prev_f) {
 					prev_f = f;
 					prev_n = n;
 				}
-				int original_value = 0;				
-				uint _vox_buf = float2Touint(float2(prev_f, prev_n.x));
-				uint _nor_buf = float2Touint(float2(prev_n.y, prev_n.z));
-				float prev_f = a1.x;
-				float3 prev_n =  float3(a1.y,a2.x,a2.y);
-				InterlockedExchange(_VoxelBuffer[idx], _vox_buf, original_value);
-				InterlockedExchange(_NormalBuffer[idx], _nor_buf, original_value3);		
+//				prev_n = normalize(prev_n);
+				_VoxelBuffer[idx] = int4(prev_f * 1000,prev_n.x * 1000,prev_n.y * 1000,prev_n.z * 1000);
+				InterlockedExchange(_VoxelFlagBuffer[idx],0,original_value);
 			}
-		}
-	}    
+		}    
+	}
 }

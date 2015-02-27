@@ -40,15 +40,15 @@
 
 	float3 get_normal ( float3 current_pos )
 	{
-		float voxelStep = 1 / _VolumeSize;	
-
-		float v = tex3Dlod(_VolumeTex, float4(current_pos.x, current_pos.y, current_pos.z, 0)).r ;
-	
-		float dx = v - tex3Dlod(_VolumeTex, float4(current_pos.x + voxelStep, current_pos.y, current_pos.z, 0)).r ;	
-		float dy = v - tex3Dlod(_VolumeTex, float4(current_pos.x, current_pos.y + voxelStep, current_pos.z, 0)).r ;	
-		float dz = v - tex3Dlod(_VolumeTex, float4(current_pos.x, current_pos.y, current_pos.z + voxelStep, 0)).r ;
-	
-		return normalize(float3(dx,dy,dz));
+		return tex3Dlod(_VolumeTex, float4(current_pos.x, current_pos.y, current_pos.z, 0)).gba;
+//		float voxelStep = 1 / _VolumeSize;	
+//
+//		float v = tex3Dlod(_VolumeTex, float4(current_pos.x, current_pos.y, current_pos.z, 0)).r ;
+//		float dx = v - tex3Dlod(_VolumeTex, float4(current_pos.x + voxelStep, current_pos.y, current_pos.z, 0)).r ;	
+//		float dy = v - tex3Dlod(_VolumeTex, float4(current_pos.x, current_pos.y + voxelStep, current_pos.z, 0)).r ;	
+//		float dz = v - tex3Dlod(_VolumeTex, float4(current_pos.x, current_pos.y, current_pos.z + voxelStep, 0)).r ;
+//	
+//		return normalize(float3(dx,dy,dz));
 	}
 
 	float SampleData3( float3 p )
@@ -56,14 +56,17 @@
 		return tex3Dlod(_VolumeTex,float4(p.xyz,0)).x;	
 	}
 
-	float3 ComputeGradient(float3 position, float3 dataStep, float h2)
-	{
-		float3 grad = float3(
-						(SampleData3(position + float3(dataStep.x, 0, 0)).x - SampleData3(position+float3(-dataStep.x, 0, 0)).x)/h2, 
-						(SampleData3(position+float3(0, dataStep.y, 0)).x - SampleData3(position+float3(0, -dataStep.y, 0)).x)/h2, 
-						(SampleData3(position+float3(0,0,dataStep.z)).x - SampleData3(position+float3(0,0,-dataStep.z)).x)/h2
-						);
-		return grad;
+//	float3 ComputeGradient(float3 position, float3 dataStep, float h2)
+//	{
+//		float3 grad = float3(
+//						(SampleData3(position + float3(dataStep.x, 0, 0)).x - SampleData3(position+float3(-dataStep.x, 0, 0)).x)/h2, 
+//						(SampleData3(position+float3(0, dataStep.y, 0)).x - SampleData3(position+float3(0, -dataStep.y, 0)).x)/h2, 
+//						(SampleData3(position+float3(0,0,dataStep.z)).x - SampleData3(position+float3(0,0,-dataStep.z)).x)/h2
+//						);
+//		return grad;
+//	}
+	float3 ComputeGradient(float3 position, float3 dataStep, float h2) {
+		return float3(-1.0f*tex3Dlod(_VolumeTex,float4(position.xyz,0)).yzw);
 	}
 	
 	// Raycast surface only
@@ -98,7 +101,8 @@
 		[allow_uav_condition]
 		for( uint i = 0; i < 512 ; i++ )
 		{
-			current_intensity = tex3Dlod(_VolumeTex, float4(current_pos, 0)).r / 1000.0f;
+//			current_intensity = tex3Dlod(_VolumeTex, float4(current_pos, 0)).r / 1000.0f;
+			current_intensity = tex3Dlod(_VolumeTex, float4(current_pos, 0)).r;
 			
 			if(seek_depth && current_intensity >= _IntensityThreshold) 
 			{
@@ -109,7 +113,8 @@
 			// If the ray enters the volume
 			if( seek_first && current_intensity >= _IntensityThreshold && previous_intensity < _IntensityThreshold )
 			{
-				float3 world_normal = normalize(ComputeGradient(current_pos, 1.0/ _VolumeSize, _VolumeSize * 2));
+//				float3 world_normal = normalize(ComputeGradient(current_pos, 1.0/ _VolumeSize, _VolumeSize * 2));
+				float3 world_normal = ComputeGradient(current_pos, 1.0/ _VolumeSize, _VolumeSize * 2);
 				float3 light_dir = normalize(-_WorldSpaceCameraPos);
 				float ndotl = max( 0.0, dot(light_dir, world_normal));
 

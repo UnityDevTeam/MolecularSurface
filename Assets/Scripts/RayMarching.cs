@@ -33,18 +33,19 @@ public class RayMarching : MonoBehaviour
     [Range(0.5f, 10)]
     public float SurfaceSmoothness = 0.8f;
 
-    [Range(0.0f, 10)]
-    public float IntensityThreshold = 0.8f;
+    [Range(-5.0f, 5.0f)]
+    public float IntensityThreshold = 0.0f;
 
 	private Material _rayMarchMaterial;
 	private Material _compositeMaterial;
     private Material _backDepthMaterial;
 
     private ComputeBuffer _voxelBuffer;
+	private ComputeBuffer _voxelFlagBuffer;
     private ComputeBuffer _atomBuffer;
-	private ComputeBuffer _normalBuffer;
+//	private ComputeBuffer[] _normalBuffer;
     private RenderTexture _volumeTexture;
-	private RenderTexture _normalTexture;
+//	private RenderTexture _normalTexture;
 
 	private void OnEnable()
 	{
@@ -57,39 +58,38 @@ public class RayMarching : MonoBehaviour
     {
         if (_atomBuffer != null) _atomBuffer.Release(); _atomBuffer = null;
         if (_voxelBuffer != null) _voxelBuffer.Release(); _voxelBuffer = null;
-		if (_normalBuffer != null) _normalBuffer.Release(); _normalBuffer = null;
+		if (_voxelFlagBuffer != null) _voxelFlagBuffer.Release(); _voxelFlagBuffer = null;
         if (_volumeTexture != null) _volumeTexture.Release(); _volumeTexture = null;
-		if (_normalTexture != null) _normalTexture.Release(); _normalTexture = null;
+
     }
 
 	private void Start()
 	{
 		CreateResources();
 	}
-    
+
 	private void CreateResources()
 	{
         string pdbPath = Application.dataPath + "/Molecules/1.pdb";
         var atoms = PdbReader.ReadPdbFile(pdbPath);
         _atomBuffer = new ComputeBuffer(atoms.Count, sizeof(float) * 4, ComputeBufferType.Default);
         _atomBuffer.SetData(atoms.ToArray());
+        _voxelBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, 4*sizeof(int), ComputeBufferType.Default);
+		_voxelFlagBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, sizeof(uint), ComputeBufferType.Default);
 
-        _voxelBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, sizeof(float), ComputeBufferType.Default);
-		_normalBuffer = new ComputeBuffer(VolumeSize * VolumeSize * VolumeSize, sizeof(float), ComputeBufferType.Default);
-
-        _volumeTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.RFloat);
-        _volumeTexture.volumeDepth = VolumeSize;
+		_volumeTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.ARGBFloat);
+		_volumeTexture.volumeDepth = VolumeSize;
         _volumeTexture.isVolume = true;
         _volumeTexture.enableRandomWrite = true;
         _volumeTexture.filterMode = FilterMode.Trilinear;
         _volumeTexture.Create();
 
-		_normalTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.RFloat);
-		_normalTexture.volumeDepth = VolumeSize;
-		_normalTexture.isVolume = true;
-		_normalTexture.enableRandomWrite = true;
-		_normalTexture.filterMode = FilterMode.Trilinear;
-		_normalTexture.Create();
+//		_normalTexture = new RenderTexture(VolumeSize, VolumeSize, 0, RenderTextureFormat.ARGB32);
+//		_normalTexture.volumeDepth = VolumeSize;
+//		_normalTexture.isVolume = true;
+//		_normalTexture.enableRandomWrite = true;
+//		_normalTexture.filterMode = FilterMode.Trilinear;
+//		_normalTexture.Create();
 	}
     
     [ImageEffectOpaque]
@@ -97,8 +97,9 @@ public class RayMarching : MonoBehaviour
     {
         // Init the volume data with zeros 
         InitVolume.SetInt("_VolumeSize", VolumeSize);
-        InitVolume.SetTexture(0, "_VolumeTexture", _volumeTexture);
+//        InitVolume.SetTexture(0, "_VolumeTexture", _volumeTexture);
         InitVolume.SetBuffer(0, "_VoxelBuffer", _voxelBuffer);
+		InitVolume.SetBuffer(0, "_VoxelFlagBuffer", _voxelFlagBuffer);
         InitVolume.Dispatch(0, VolumeSize / 8, VolumeSize / 8, VolumeSize / 8);
         
         // Fill the volume data with atom values
@@ -107,9 +108,13 @@ public class RayMarching : MonoBehaviour
         FillVolume.SetFloat("_Scale", Scale);
         FillVolume.SetFloat("_SurfaceSmoothness", SurfaceSmoothness);
         FillVolume.SetBuffer(0, "_AtomBuffer", _atomBuffer);
-		FillVolume.SetBuffer(0, "_NormalBuffer", _normalBuffer);
+//		FillVolume.SetBuffer(0, "_NormalBuffer1", _normalBuffer[0]);
+//		FillVolume.SetBuffer(0, "_NormalBuffer2", _normalBuffer[1]);
+//		FillVolume.SetBuffer(0, "_NormalBuffer3", _normalBuffer[2]);
         FillVolume.SetBuffer(0, "_VoxelBuffer", _voxelBuffer);
+		FillVolume.SetBuffer(0, "_VoxelFlagBuffer", _voxelFlagBuffer);
         FillVolume.Dispatch(0, (int)Mathf.Ceil((_atomBuffer.count) / 64.0f), 1, 1);
+//		FillVolume.Dispatch(0, (int)Mathf.Ceil((_atomBuffer.count) / 64.0f), 1, 1);
 
         // Blit linear buffer in 3D texture
         BlitVolume.SetInt("_VolumeSize", VolumeSize);

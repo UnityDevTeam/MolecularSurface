@@ -122,7 +122,7 @@ MonoBehaviour:
   NumSteps: 256
   VolumeSize: 128
   SurfaceSmoothness: .800000012
-  IntensityThreshold: .100000001
+  IntensityThreshold: 0
 --- !u!114 &524774159
 MonoBehaviour:
   m_ObjectHideFlags: 0
